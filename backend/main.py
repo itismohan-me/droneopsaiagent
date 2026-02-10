@@ -34,6 +34,9 @@ app.add_middleware(
 # Initialize data sync
 csv_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data")
 use_google_sheets = os.getenv("USE_GOOGLE_SHEETS", "false").lower() == "true"
+print(f"ENV USE_GOOGLE_SHEETS={os.getenv('USE_GOOGLE_SHEETS')}")
+print(f"ENV GOOGLE_SHEETS_ID={os.getenv('GOOGLE_SHEETS_ID')}")
+print(f"ENV GOOGLE_CREDENTIALS_PATH={os.getenv('GOOGLE_CREDENTIALS_PATH')}")
 sync = GoogleSheetsSync(
     pilot_csv_path=os.path.join(csv_dir, "pilot_roster.csv"),
     drone_csv_path=os.path.join(csv_dir, "drone_fleet.csv"),

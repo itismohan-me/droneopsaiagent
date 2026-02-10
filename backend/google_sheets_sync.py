@@ -28,6 +28,9 @@ try:
 except Exception:
     GOOGLEAPI_AVAILABLE = False
 
+# Convenience flag: any supported Google Sheets client available
+GOOGLE_SHEETS_AVAILABLE = GSPREAD_AVAILABLE or GOOGLEAPI_AVAILABLE
+
 
 class GoogleSheetsSync:
     """Handles sync between local CSV and Google Sheets"""
@@ -94,6 +97,19 @@ class GoogleSheetsSync:
 
         raise ImportError("No supported Google Sheets client libraries available (install gspread).")
 
+    def _find_worksheet(self, candidates):
+        """Return first worksheet matching any candidate title (case-insensitive, normalized)"""
+        if not self.gspread_sheet:
+            return None
+        def norm(s):
+            return s.strip().lower().replace(' ', '_').replace('-', '_')
+        titles = {norm(ws.title): ws for ws in self.gspread_sheet.worksheets()}
+        for c in candidates:
+            key = norm(c)
+            if key in titles:
+                return titles[key]
+        return None
+
     def load_pilots_from_csv(self) -> List[Pilot]:
         """Load pilots from CSV file or Google Sheets"""
         pilots = []
@@ -139,7 +155,9 @@ class GoogleSheetsSync:
         pilots = []
         # Use gspread records for simplicity if available
         if self.gspread_sheet:
-            ws = self.gspread_sheet.worksheet('Pilots')
+            ws = self._find_worksheet(['Pilots', 'pilot_roster', 'pilot_roaster', 'Pilots Roster', 'Pilot Roster'])
+            if not ws:
+                raise Exception('Pilots worksheet not found')
             records = ws.get_all_records()
             for rec in records:
                 skills = [s.strip() for s in rec.get('skills', '').split(',')] if rec.get('skills') else []
@@ -240,7 +258,9 @@ class GoogleSheetsSync:
         drones = []
         
         if self.gspread_sheet:
-            ws = self.gspread_sheet.worksheet('Drones')
+            ws = self._find_worksheet(['Drones', 'drone_fleet', 'drone fleet', 'Drone Fleet'])
+            if not ws:
+                raise Exception('Drones worksheet not found')
             records = ws.get_all_records()
             for rec in records:
                 capabilities = [c.strip() for c in rec.get('capabilities', '').split(',')] if rec.get('capabilities') else []
@@ -335,7 +355,9 @@ class GoogleSheetsSync:
         missions = []
         
         if self.gspread_sheet:
-            ws = self.gspread_sheet.worksheet('Missions')
+            ws = self._find_worksheet(['Missions', 'missions'])
+            if not ws:
+                raise Exception('Missions worksheet not found')
             records = ws.get_all_records()
             for rec in records:
                 required_skills = [s.strip() for s in rec.get('required_skills', '').split(',')] if rec.get('required_skills') else []
@@ -426,7 +448,9 @@ class GoogleSheetsSync:
         try:
             # If using gspread, prefer row/col updates for simplicity
             if self.gspread_sheet:
-                ws = self.gspread_sheet.worksheet('Pilots')
+                ws = self._find_worksheet(['Pilots', 'pilot_roster', 'pilot_roaster', 'Pilots Roster', 'Pilot Roster'])
+                if not ws:
+                    raise Exception('Pilots worksheet not found')
                 headers = ws.row_values(1)
                 if 'name' in [h.lower() for h in headers]:
                     # Normalize header case to find status/name indices
@@ -520,7 +544,9 @@ class GoogleSheetsSync:
         try:
             # Use gspread if available
             if self.gspread_sheet:
-                ws = self.gspread_sheet.worksheet('Drones')
+                ws = self._find_worksheet(['Drones', 'drone_fleet', 'drone fleet', 'Drone Fleet'])
+                if not ws:
+                    raise Exception('Drones worksheet not found')
                 headers = ws.row_values(1)
                 lower_headers = [h.lower() for h in headers]
                 try:
@@ -624,10 +650,8 @@ class GoogleSheetsSync:
         
         # Prefer gspread when available
         if self.gspread_sheet:
-            ws = None
-            try:
-                ws = self.gspread_sheet.worksheet('Pilots')
-            except Exception:
+            ws = self._find_worksheet(['Pilots', 'pilot_roster', 'pilot_roaster', 'Pilots Roster', 'Pilot Roster'])
+            if not ws:
                 ws = self.gspread_sheet.add_worksheet('Pilots', rows=len(values)+10, cols=10)
             ws.clear()
             ws.update('A1', values)
@@ -657,9 +681,8 @@ class GoogleSheetsSync:
             ])
         
         if self.gspread_sheet:
-            try:
-                ws = self.gspread_sheet.worksheet('Drones')
-            except Exception:
+            ws = self._find_worksheet(['Drones', 'drone_fleet', 'drone fleet', 'Drone Fleet'])
+            if not ws:
                 ws = self.gspread_sheet.add_worksheet('Drones', rows=len(values)+10, cols=10)
             ws.clear()
             ws.update('A1', values)
@@ -690,9 +713,8 @@ class GoogleSheetsSync:
             ])
         
         if self.gspread_sheet:
-            try:
-                ws = self.gspread_sheet.worksheet('Missions')
-            except Exception:
+            ws = self._find_worksheet(['Missions', 'missions'])
+            if not ws:
                 ws = self.gspread_sheet.add_worksheet('Missions', rows=len(values)+10, cols=10)
             ws.clear()
             ws.update('A1', values)
@@ -734,6 +756,13 @@ class GoogleSheetsSync:
                     writer = csv.DictWriter(f, fieldnames=fieldnames)
                     writer.writeheader()
                     writer.writerows(pilots_data)
+                # Sync to Google Sheets if available
+                if self.use_google_sheets:
+                    try:
+                        self._update_pilot_status_sheets(pilot_update)
+                    except Exception as e:
+                        self.sync_log.append(f"⚠ Sheet sync failed: {str(e)}")
+
                 self.sync_log.append(f"✓ Updated pilot {pilot_update.name} status to {pilot_update.status}")
                 return True
             else:
