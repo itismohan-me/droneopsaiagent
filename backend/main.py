@@ -33,10 +33,14 @@ app.add_middleware(
 
 # Initialize data sync
 csv_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data")
+use_google_sheets = os.getenv("USE_GOOGLE_SHEETS", "false").lower() == "true"
 sync = GoogleSheetsSync(
     pilot_csv_path=os.path.join(csv_dir, "pilot_roster.csv"),
     drone_csv_path=os.path.join(csv_dir, "drone_fleet.csv"),
-    missions_csv_path=os.path.join(csv_dir, "missions.csv")
+    missions_csv_path=os.path.join(csv_dir, "missions.csv"),
+    google_sheets_id=os.getenv("GOOGLE_SHEETS_ID"),
+    credentials_path=os.getenv("GOOGLE_CREDENTIALS_PATH"),
+    use_google_sheets=use_google_sheets
 )
 
 # Load initial data
@@ -492,6 +496,110 @@ async def get_statistics() -> dict:
             "scheduled": sum(1 for m in missions if m.status == "Scheduled")
         }
     }
+
+# ============================================================================
+# GOOGLE SHEETS INTEGRATION
+# ============================================================================
+
+@app.get("/api/sync/status")
+async def get_sync_status() -> dict:
+    """Get sync status and log"""
+    return {
+        "google_sheets_enabled": sync.use_google_sheets,
+        "google_sheets_id": sync.google_sheets_id if sync.use_google_sheets else None,
+        "sync_log": sync.get_sync_log(),
+        "last_sync": sync.sync_log[-1] if sync.sync_log else None
+    }
+
+@app.post("/api/sync/pilots")
+async def sync_pilots_to_sheets() -> dict:
+    """Manually sync all pilots to Google Sheets"""
+    if not sync.use_google_sheets:
+        raise HTTPException(
+            status_code=400,
+            detail="Google Sheets integration not configured. Set USE_GOOGLE_SHEETS=true and provide credentials."
+        )
+    
+    success = sync.sync_to_sheets("pilots")
+    return {
+        "success": success,
+        "message": "Pilots synced to Google Sheets" if success else "Failed to sync pilots",
+        "sync_log": sync.get_sync_log()
+    }
+
+@app.post("/api/sync/drones")
+async def sync_drones_to_sheets() -> dict:
+    """Manually sync all drones to Google Sheets"""
+    if not sync.use_google_sheets:
+        raise HTTPException(
+            status_code=400,
+            detail="Google Sheets integration not configured. Set USE_GOOGLE_SHEETS=true and provide credentials."
+        )
+    
+    success = sync.sync_to_sheets("drones")
+    return {
+        "success": success,
+        "message": "Drones synced to Google Sheets" if success else "Failed to sync drones",
+        "sync_log": sync.get_sync_log()
+    }
+
+@app.post("/api/sync/missions")
+async def sync_missions_to_sheets() -> dict:
+    """Manually sync all missions to Google Sheets"""
+    if not sync.use_google_sheets:
+        raise HTTPException(
+            status_code=400,
+            detail="Google Sheets integration not configured. Set USE_GOOGLE_SHEETS=true and provide credentials."
+        )
+    
+    success = sync.sync_to_sheets("missions")
+    return {
+        "success": success,
+        "message": "Missions synced to Google Sheets" if success else "Failed to sync missions",
+        "sync_log": sync.get_sync_log()
+    }
+
+@app.post("/api/sync/all")
+async def sync_all_to_sheets() -> dict:
+    """Manually sync all data to Google Sheets"""
+    if not sync.use_google_sheets:
+        raise HTTPException(
+            status_code=400,
+            detail="Google Sheets integration not configured. Set USE_GOOGLE_SHEETS=true and provide credentials."
+        )
+    
+    success = sync.sync_to_sheets("all")
+    return {
+        "success": success,
+        "message": "All data synced to Google Sheets" if success else "Failed to sync data",
+        "sync_log": sync.get_sync_log()
+    }
+
+@app.post("/api/sync/reload")
+async def reload_from_sheets() -> dict:
+    """Reload all data from Google Sheets or CSV"""
+    global pilots, drones, missions, conflict_detector, assignments
+    
+    try:
+        pilots = sync.load_pilots_from_csv()
+        drones = sync.load_drones_from_csv()
+        missions = sync.load_missions_from_csv()
+        conflict_detector = ConflictDetector(pilots, drones, missions)
+        assignments = []
+        
+        return {
+            "success": True,
+            "message": "Data reloaded successfully",
+            "pilots_count": len(pilots),
+            "drones_count": len(drones),
+            "missions_count": len(missions),
+            "sync_log": sync.get_sync_log()
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error reloading data: {str(e)}"
+        )
 
 # ============================================================================
 # HELPER FUNCTIONS

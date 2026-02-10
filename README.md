@@ -11,7 +11,7 @@ A comprehensive AI-powered drone operations coordinator system for managing pilo
 - **Conversational AI Interface**: Natural language agent for queries and operations
 - **Urgent Reassignments**: Emergency resource reallocation with automatic drone compatibility matching
 - **Decision Logging**: Comprehensive audit trail of all operations
-- **Google Sheets Integration**: CSV-based sync with Google Sheets (MVP)
+- **Google Sheets Integration**: Real-time 2-way sync with Google Sheets for cloud-based data management
 
 ## 📋 Requirements
 
@@ -374,35 +374,75 @@ PRJ001,TechCorp,Bangalore,"Mapping,Survey",DGCA,2026-02-10,2026-02-12,High,Open
 
 ## 🔄 Google Sheets Integration
 
-### Manual Setup (Current MVP)
+The system supports **real-time 2-way sync** with Google Sheets for production deployments!
 
-1. **Export data to Google Sheets:**
-   - Copy CSV data from `/data/` folder
-   - Create Google Sheet with same structure
-   - Paste data into sheets
+### Quick Start (CSV Mode - Default)
 
-2. **Auto-sync CSV to Sheet:**
-   - Use `google_sheets_sync.py` functions
-   - Call `sync.update_pilot_status()` to push changes
-   - Call `sync.load_pilots_from_csv()` to pull updates
+For local development, the system uses local CSV files by default:
+- No setup required
+- Data stored in `/data/` folder
+- Perfect for testing and prototyping
 
-### Production Setup (Optional)
+### Production Setup (Google Sheets Mode)
 
-For full Google Sheets API integration:
+Enable full cloud-based data synchronization:
 
-1. **Setup Google Cloud Project:**
-   - Visit https://console.cloud.google.com
-   - Create new project
-   - Enable Google Sheets API
-   - Create Service Account credentials (JSON key)
+1. **Prerequisites:**
+   - Google Account
+   - Google Cloud Project
+   - Service Account credentials
 
-2. **Share Sheet with Service Account:**
-   - Copy spreadsheet ID from URL
-   - Add service account email to sheet editors
+2. **Complete Setup Guide:**
+   - See [GOOGLE_SHEETS_SETUP.md](GOOGLE_SHEETS_SETUP.md) for detailed step-by-step instructions
+   - Includes screenshots and troubleshooting
 
-3. **Update backend configuration:**
-   - Add `GOOGLE_SHEETS_ID` and `GOOGLE_CREDENTIALS_PATH` to `.env`
-   - Update `google_sheets_sync.py` to use API instead of CSV
+3. **Quick Configuration:**
+
+   ```bash
+   # Create credentials directory
+   mkdir -p credentials
+   
+   # Copy your service account JSON
+   cp ~/Downloads/service-account-key.json credentials/gsheet_credentials.json
+   
+   # Update .env
+   cp .env.example .env
+   ```
+
+   In `.env`:
+   ```env
+   USE_GOOGLE_SHEETS=true
+   GOOGLE_SHEETS_ID=your_spreadsheet_id_here
+   GOOGLE_CREDENTIALS_PATH=./credentials/gsheet_credentials.json
+   ```
+
+4. **Verify Connection:**
+   ```bash
+   curl http://localhost:8000/api/sync/status
+   ```
+
+### Available Sync Endpoints
+
+```bash
+# Check sync status
+GET /api/sync/status
+
+# Manual sync operations
+POST /api/sync/all          # Sync all data
+POST /api/sync/pilots       # Sync pilots only
+POST /api/sync/drones       # Sync drones only
+POST /api/sync/missions     # Sync missions only
+
+# Reload data from Sheets or CSV
+POST /api/sync/reload
+```
+
+### Sync Behavior
+
+- **Automatic**: Updates made through API automatically sync to Google Sheets
+- **Manual**: Use sync endpoints above for bulk operations
+- **Fallback**: If Google Sheets fails, system continues using local CSV
+- **Bi-directional**: Load from Google Sheets on startup or manual reload
 
 ## 🐛 Troubleshooting
 
